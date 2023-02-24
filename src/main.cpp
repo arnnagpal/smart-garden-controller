@@ -4,6 +4,8 @@
 #include <DallasTemperature.h>
 #include <HardwareSerial.h>
 #include <Arduino.h>
+#include <Wire.h>
+#include "SI114X.h"
 
 #define ONE_WIRE_PIN 7
 
@@ -16,6 +18,7 @@
 #define DHTTYPE DHT11  // DHT 11
 OneWire oneWire(ONE_WIRE_PIN);
 DallasTemperature sensors(&oneWire);
+SI114X SI1145 = SI114X();
 
 SoftwareSerial espSerial(5, 6);
 DHT dht(DHT_PIN, DHTTYPE);
@@ -29,6 +32,10 @@ void setup() {
     espSerial.begin(9600);
     dht.begin();
     sensors.begin();
+    while (!SI1145.Begin()) {
+        Serial.println("SI1145 not found");
+        delay(1000);
+    }
     delay(2000);
 
     pinMode(BUTTON1_PIN, INPUT);
@@ -65,6 +72,10 @@ void loop() {
         int moistureVal = analogRead(A2);
         float tempC = sensors.getTempCByIndex(0);
 
+        uint16_t visibleLight = SI1145.ReadVisible();
+        uint16_t infraredLight = SI1145.ReadIR();
+        float uvLight = (float)SI1145.ReadUV() / 100;
+
         Serial.print("DHT11 - H: ");
         Serial.print(h);
         Serial.print("% ");
@@ -75,7 +86,17 @@ void loop() {
         Serial.print(hic);
         Serial.println("C");
 
-        Serial.print("CMSCR - V: ");
+        Serial.print("SU - VIS: ");
+        Serial.print(visibleLight);
+
+        Serial.print("lm UV: ");
+        Serial.print(uvLight);
+
+        Serial.print("UVI IR: ");
+        Serial.print(infraredLight);
+        Serial.println("lm");
+
+        Serial.print(" CMSCR - V: ");
         Serial.println(moistureVal);
 
         if (tempC == DEVICE_DISCONNECTED_C) {
@@ -89,7 +110,15 @@ void loop() {
         Serial.println("C");
 
 
-        str = String("EH=") + String(h) + String(";ET=") + String(t) + String(";EHI=") + String(hic) + String(";SM=") + String(moistureVal) + String(";ST=") + tempC;
+        str = String("EH=") + String(h) +
+                String(";ET=") + String(t) +
+                String(";EHI=") + String(hic) +
+                String(";SM=") + String(moistureVal) +
+                String(";ST=") + tempC +
+                String(";UV=") + uvLight +
+                String(";VIS=") + visibleLight +
+                String(";IR=") + infraredLight
+        ;
         espSerial.println(str + "@");
 
         prev = now;
