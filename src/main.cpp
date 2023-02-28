@@ -4,7 +4,6 @@
 #include <DallasTemperature.h>
 #include <HardwareSerial.h>
 #include <Arduino.h>
-#include <Wire.h>
 #include "SI114X.h"
 
 #define ONE_WIRE_PIN 7
@@ -43,6 +42,30 @@ void setup() {
     pinMode(RELAY_PIN, OUTPUT);
 }
 
+String intToString(int b) {
+    if (b == 1) {
+        return "true";
+    } else {
+        return "false";
+    }
+}
+
+bool shouldPump(float sMP, float eT, float ehP, float uV, float iR) {
+    // soil moisture in the range of 20-30
+    // temperature in the range of 10-18.3 celsius
+    // humidity in the range of 50-60%
+    // wavelength of 400-700nm
+    // intensity > 0
+    if (sMP >= 20 && sMP <= 30
+        && eT >= 10 && eT <= 18.3
+        && ehP >= 50 && ehP <= 60
+        && uV > 0
+        && iR > 0) {
+        return true;
+    } else {
+        return false;
+    }
+}
 
 void loop() {
     static unsigned long prev = 0;
@@ -74,7 +97,8 @@ void loop() {
 
         uint16_t visibleLight = SI1145.ReadVisible();
         uint16_t infraredLight = SI1145.ReadIR();
-        float uvLight = (float)SI1145.ReadUV() / 100;
+        float uvLight = (float) SI1145.ReadUV() / 100;
+        int pumpState = digitalRead(RELAY_PIN);
 
         Serial.print("DHT11 - H: ");
         Serial.print(h);
@@ -109,16 +133,18 @@ void loop() {
         Serial.print(tempC);
         Serial.println("C");
 
+        Serial.println("Pumping: " + intToString(pumpState));
+
 
         str = String("EH=") + String(h) +
-                String(";ET=") + String(t) +
-                String(";EHI=") + String(hic) +
-                String(";SM=") + String(moistureVal) +
-                String(";ST=") + tempC +
-                String(";UV=") + uvLight +
-                String(";VIS=") + visibleLight +
-                String(";IR=") + infraredLight
-        ;
+              String(";ET=") + String(t) +
+              String(";EHI=") + String(hic) +
+              String(";SM=") + String(moistureVal) +
+              String(";ST=") + tempC +
+              String(";UV=") + uvLight +
+              String(";VIS=") + visibleLight +
+              String(";IR=") + infraredLight +
+              String(";P=") + intToString(pumpState);
         espSerial.println(str + "@");
 
         prev = now;
