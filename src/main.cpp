@@ -4,6 +4,7 @@
 #include <DallasTemperature.h>
 #include <HardwareSerial.h>
 #include <Arduino.h>
+#include <ezButton.h>
 #include "Si115X.h"
 
 #define ONE_WIRE_PIN 7
@@ -23,8 +24,10 @@ SoftwareSerial espSerial(5, 6);
 DHT dht(DHT_PIN, DHTTYPE);
 String str;
 
-bool prevState1 = 1;  //set button1 state
-bool prevState2 = 1;  //set button2 state
+ezButton toggle_button(BUTTON1_PIN);
+ezButton hold_button(BUTTON2_PIN);
+
+bool pumpOverride = false;
 
 void setup() {
     Serial.begin(9600);
@@ -37,8 +40,6 @@ void setup() {
     }
     delay(2000);
 
-    pinMode(BUTTON1_PIN, INPUT);
-    pinMode(BUTTON2_PIN, INPUT);
     pinMode(RELAY_PIN, OUTPUT);
 }
 
@@ -73,6 +74,31 @@ void loop() {
     static unsigned long prev = 0;
     static unsigned long pumpPrev = 0;
     unsigned long now = millis();
+    int pumpState = digitalRead(RELAY_PIN);
+    int moistureVal = analogRead(A2);
+
+    toggle_button.loop();
+    hold_button.loop();
+
+    if (toggle_button.isPressed()) {
+        pumpOverride = !pumpOverride;
+        Serial.println("Toggled pump override: " + intToString(pumpOverride));
+    }
+
+    if (!pumpOverride && hold_button.isPressed()) {
+        pumpOverride = true;
+        Serial.println("Toggled pump override: " + intToString(pumpOverride));
+    }
+
+    if (pumpOverride) {
+        digitalWrite(RELAY_PIN, HIGH);
+        pumpState = 1;
+
+        if (hold_button.isReleased()) {
+            pumpOverride = false;
+            Serial.println("Toggled pump override: " + intToString(pumpOverride));
+        }
+    }
 
     sensors.requestTemperatures();
 
@@ -80,13 +106,11 @@ void loop() {
     // Read temperature as Celsius (the default)
     float t = dht.readTemperature();
     float hic = dht.computeHeatIndex(t, h, false);
-    int moistureVal = analogRead(A2);
     float tempC = sensors.getTempCByIndex(0);
 
     uint16_t visibleLight = SI1151.ReadHalfWord_VISIBLE();
     uint16_t infraredLight = SI1151.ReadHalfWord();
     auto uvLight = (float) SI1151.ReadHalfWord_UV();
-    int pumpState = digitalRead(RELAY_PIN);
     float smP = map(moistureVal * 1.0f, 1023.0f, 292.0f, 0.0f, 100.0f);
 
     bool pump = shouldPump(smP, t, h, uvLight, infraredLight);
@@ -95,29 +119,12 @@ void loop() {
         Serial.println(Serial.readStringUntil('\n'));
     }
 
-    // toggle relay on button press
-    // (green button)
-    if (digitalRead(BUTTON1_PIN) == 0 && prevState1 == 1) {
-        digitalWrite(RELAY_PIN, !digitalRead(RELAY_PIN));
-        prevState1 = false;
-    } else if (digitalRead(BUTTON1_PIN) == 1 && prevState1 == 0) {
-        prevState1 = true;
-    }
-
-    // turn on relay if button2 is held down
-    // (white button)
-    if (digitalRead(BUTTON2_PIN) == 0 && prevState2 == 1) {
-        digitalWrite(RELAY_PIN, HIGH);
-        prevState2 = false;
-    } else if (digitalRead(BUTTON2_PIN) == 1 && prevState2 == 0) {
-        digitalWrite(RELAY_PIN, LOW);
-        prevState2 = true;
-    }
-
     // stop watering if should not pump or if the burst of 1 second is over
     if (!pump || now - pumpPrev >= 1000L) {
-        digitalWrite(RELAY_PIN, LOW);
-        pumpPrev = now;
+        if (!pumpOverride) {
+            digitalWrite(RELAY_PIN, LOW);
+            pumpPrev = now;
+        }
     }
 
     if (now - prev >= 10000L) {
