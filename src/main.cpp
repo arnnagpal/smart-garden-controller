@@ -57,7 +57,7 @@ bool shouldPump(float sMP, float eT, float ehP, float uV, float iR) {
     // humidity in the range of 50-60%
     // wavelength of 400-700nm
     // intensity > 0
-    if (sMP >= 20 && sMP <= 30) {
+    if (sMP <= 50) {
         return true;
     } else {
         return false;
